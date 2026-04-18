@@ -22,7 +22,10 @@ mysql -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB
 mysql -e "GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'127.0.0.1';"
 mysql -e "FLUSH PRIVILEGES;"
 
-if ! id "student" &>/dev/null; then useradd -m -s /bin/bash -G sudo student; fi
+if ! id "student" &>/dev/null; then 
+    useradd -m -s /bin/bash -G sudo student
+    echo "student:12345678" | chpasswd
+fi
 
 if ! id "teacher" &>/dev/null; then
     useradd -m -s /bin/bash -G sudo teacher
@@ -33,7 +36,8 @@ fi
 if ! id "app" &>/dev/null; then useradd -r -s /bin/false app; fi
 
 if ! id "operator" &>/dev/null; then
-    useradd -m -s /bin/bash operator
+    getent group operator || groupadd operator
+    useradd -m -s /bin/bash -g operator operator
     echo "operator:12345678" | chpasswd
     chage -d 0 operator
 fi
