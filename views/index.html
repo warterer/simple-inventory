@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Inventory API</title>
+</head>
+<body>
+    <h1>Simple Inventory API</h1>
+    <p>Ласкаво просимо до сервісу обліку обладнання.</p>
+    <ul>
+        <li><a href="/items">GET /items</a> - Список усіх предметів (HTML/JSON)</li>
+        <li>POST /items (name, quantity) - Створити новий запис</li>
+        <li>GET /items/&lt;id&gt; - Деталі предмету (HTML/JSON)</li>
+    </ul>
+    
+    <h3>Health Checks:</h3>
+    <ul>
+        <li><a href="/health/alive">GET /health/alive</a> - Перевірка доступності сервісу</li>
+        <li><a href="/health/ready">GET /health/ready</a> - Перевірка підключення до бази даних</li>
+    </ul>
+</body>
+</html>

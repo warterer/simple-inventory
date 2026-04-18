@@ -1,5 +1,6 @@
 const express = require("express");
 const minimist = require("minimist");
+const path = require("path");
 const pool = require("./db");
 const inventoryRoutes = require("./routes/inventory.routes");
 
@@ -31,16 +32,11 @@ app.get("/health/ready", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.type("text/html").send(`
-        <h1>Simple Inventory API</h1>
-        <ul>
-            <li><a href="/items">GET /items</a> - Список усіх предметів</li>
-            <li>POST /items (name, quantity) - Створити запис</li>
-            <li>GET /items/&lt;id&gt; - Деталі предмету</li>
-            <li><a href="/health/alive">GET /health/alive</a></li>
-            <li><a href="/health/ready">GET /health/ready</a></li>
-        </ul>
-    `);
+  if (req.accepts("html", "json") === "html") {
+    res.sendFile(path.join(__dirname, "views", "index.html"));
+  } else {
+    res.status(406).send("text/html only");
+  }
 });
 
 app.listen(args.port, () => {
