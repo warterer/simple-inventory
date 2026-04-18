@@ -13,7 +13,7 @@ const args = minimist(process.argv.slice(2), {
 const pool = mariadb.createPool({
   host: args.db_host,
   user: args.db_user,
-  password: args.db_pass,
+  password: String(args.db_pass),
   database: args.db_name,
   connectionLimit: 5,
 });

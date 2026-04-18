@@ -8,7 +8,10 @@ fi
 echo "Start configuring Simple Inventory (N=20)"
 
 apt-get update
-apt-get install -y nginx mariadb-server nodejs npm curl
+apt-get install -y nginx mariadb-server curl
+
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
 
 DB_NAME="inventory_db"
 DB_USER="app"
