@@ -39,6 +39,14 @@ app.get("/", (req, res) => {
   }
 });
 
-app.listen(args.port, () => {
-  console.log(`App is running on port ${args.port}`);
-});
+const isSocketActivation = process.env.LISTEN_FDS > 0;
+
+if (isSocketActivation) {
+  app.listen({ fd: 3 }, () => {
+    console.log("App is running via Systemd Socket Activation");
+  });
+} else {
+  app.listen(args.port, () => {
+    console.log(`App is running on port ${args.port}`);
+  });
+}
