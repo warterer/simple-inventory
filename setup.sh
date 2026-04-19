@@ -77,7 +77,7 @@ User=app
 WorkingDirectory=${APP_DIR}
 Environment=NODE_ENV=production
 ExecStartPre=/usr/bin/node ${APP_DIR}/migrate.js --db_user=${DB_USER} --db_pass=${DB_PASS} --db_name=${DB_NAME}
-ExecStart=/usr/bin/node ${APP_DIR}/app.js --db_user=${DB_USER} --db_pass=${DB_PASS} --db_name=${DB_NAME}
+ExecStart=/usr/bin/node ${APP_DIR}/app.js --port=8080 --db_user=${DB_USER} --db_pass=${DB_PASS} --db_name=${DB_NAME}
 Restart=on-failure
 
 [Install]
@@ -91,6 +91,9 @@ cat <<EOF > /etc/nginx/sites-available/mywebapp
 server {
     listen 80;
     server_name _;
+
+    access_log /var/log/nginx/mywebapp_access.log;
+    error_log  /var/log/nginx/mywebapp_error.log;
 
     location = / {
         proxy_pass http://127.0.0.1:8080;
