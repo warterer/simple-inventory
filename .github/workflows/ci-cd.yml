@@ -37,7 +37,14 @@ jobs:
       - name: Run Yamllint
         uses: ibiqlik/action-yamllint@v3
         with:
-          file_or_dir: .
+          file_or_dir: .github/workflows/ci-cd.yml docker-compose.yml
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 120
+              truthy:
+                allowed-values: ["true", "false", "on"]
 
   test:
     runs-on: ubuntu-latest
@@ -87,6 +94,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}/mywebapp
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=sha-
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=ref,event=tag
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -101,16 +113,22 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: self-hosted
     steps:
-      - name: Restart Systemd Service
-        run: sudo systemctl restart mywebapp.service
-      - name: Verify Deployment
+      - name: Deploy
         run: |
-          sleep 5
+          cd /opt/mywebapp
+          docker compose pull
+          sudo systemctl restart mywebapp.service
+
+      - name: Verify deployment
+        run: |
+          sleep 10
           curl -f -s http://localhost/items || \
-          { echo "Service unavailable!"; exit 1; }
+            { echo 'Service unavailable!'; exit 1; }
+
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          http://localhost/unknown-path)
+            http://localhost/unknown-path)
           if [ "$HTTP_STATUS" -ne 404 ]; then
             echo "Nginx error: Expected 404, got $HTTP_STATUS"
             exit 1
           fi
+          echo 'Verification passed!'
