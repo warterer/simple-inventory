@@ -100,13 +100,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: self-hosted
     steps:
-      - name: Pull new image
-        run: docker compose pull
-
       - name: Restart Systemd Service
         run: sudo systemctl restart mywebapp.service
-
+      
       - name: Verify Deployment
         run: |
           sleep 5
-          curl -f http://localhost/health/ready || exit 1
+          
+          curl -f -s http://localhost/items || { echo "Service unavailable!"; exit 1; }
+          
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/unknown-path)
+          if [ "$HTTP_STATUS" -ne 404 ]; then
+            echo "Error in Nginx configuration! Expected 404, got $HTTP_STATUS"
+            exit 1
+          fi
+          
