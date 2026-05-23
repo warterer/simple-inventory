@@ -34,21 +34,87 @@ N = 20
 
 *health-ендпоінти доступні лише локально на ВМ і заблоковані ззовні через Nginx.*
 
+## CI/CD Pipeline
+ 
+Пайплайн складається з 4 джобів які виконуються послідовно:
+ 
+```
+lint + test → build-and-push → deploy
+```
+ 
+### Тригери
+ 
+| Подія | lint | test | build-and-push | deploy |
+|---|---|---|---|---|
+| Push в `main` | ✅ | ✅ | ✅ | ❌ |
+| Pull Request в `main` | ✅ | ✅ | ❌ | ❌ |
+| Annotated tag `v*` | ✅ | ✅ | ✅ | ✅ |
+ 
+### Джоби
+ 
+**lint** — статичний аналіз коду:
+- ESLint — аналіз JavaScript
+- Hadolint — аналіз Dockerfile
+- Yamllint — аналіз YAML файлів
+**test** — автоматичні тести:
+- Jest з покриттям коду (мінімум 40%)
+- Артефакт зі звітом покриття завантажується для комітів в `main`
+**build-and-push** — збірка Docker образу:
+- Публікується в GitHub Container Registry (`ghcr.io`)
+- Теги для коміту в `main`: `latest`, `sha-<full-commit-hash>`
+- Теги для annotated tag: `stable`, `<tag>`
+**deploy** — розгортання на self-hosted runner:
+- Виконується тільки на annotated tags
+- Пулить новий образ і перезапускає systemd сервіс
+- Верифікує доступність сервісу та коректність налаштування Nginx
+### Branch Protection Rules
+ 
+Злиття в `main` заблоковано якщо не пройшли `lint` і `test`.
+ 
 ## Документація по розгортанню
-**Образ віртуальної машини:** Для розгортання використовується офіційний образ `ubuntu-22.04.4-desktop-amd64.iso`. 
-* Вимоги до ВМ: 2 CPU, 2-4 GB RAM, 20 GB Disk.
-* Спеціальні налаштування при встановленні не потрібні.
-
-**Управління доступом:**
-Після запуску скрипта автоматизації дефолтний користувач блокується.
-Доступні користувачі:
-* `student` (SSH/Console) - повні права sudo.
-* `teacher` (SSH/Console) - пароль `12345678` (вимагає зміни), повні права sudo.
-* `operator` (SSH/Console) - пароль `12345678` (вимагає зміни), обмежені права sudo (керування сервісом mywebapp та nginx).
-
-**Запуск автоматизації:**
+ 
+### Вимоги до віртуальної машини
+ 
+- OS: Ubuntu 22.04 Server
+- CPU: 2 cores
+- RAM: 2 GB
+- Disk: 20 GB
+- Docker встановлений
+### Налаштування target node
+ 
 ```bash
 git clone https://github.com/warterer/simple-inventory
 cd simple-inventory
-sudo chmod +x setup.sh
-sudo ./setup.sh
+chmod +x setup-target.sh
+./setup-target.sh
+```
+ 
+Після виконання скрипта відредагувати `/opt/mywebapp/.env`:
+ 
+```env
+DB_ROOT_PASSWORD=your_root_password
+DB_NAME=inventory_db
+DB_USER=app
+DB_PASSWORD=your_app_password
+GITHUB_REPOSITORY=warterer/simple-inventory
+```
+ 
+Запустити сервіс:
+ 
+```bash
+sudo systemctl start mywebapp.service
+```
+ 
+### Self-hosted Runner
+ 
+Runner налаштований на окремій VM і підключений до репозиторію через GitHub Actions.
+ 
+> **Важливо:** після завершення демонстрації VM з runner'ом зупиняється щоб унеможливити несанкціонований доступ.
+ 
+### Управління доступом
+ 
+| Користувач | Доступ | Права |
+|---|---|---|
+| `student` | SSH/Console | повні права sudo |
+| `teacher` | SSH/Console | повні права sudo, пароль вимагає зміни |
+| `operator` | SSH/Console | обмежені права sudo (тільки mywebapp та nginx) |
