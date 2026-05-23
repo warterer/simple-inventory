@@ -3,10 +3,10 @@ const minimist = require("minimist");
 
 const args = minimist(process.argv.slice(2), {
   default: {
-    db_host: "127.0.0.1",
-    db_user: "app",
-    db_pass: "12345678",
-    db_name: "inventory_db",
+    db_host: process.env.DB_HOST || "127.0.0.1",
+    db_user: process.env.DB_USER || "app",
+    db_pass: process.env.DB_PASS || "changeme",
+    db_name: process.env.DB_NAME || "inventory_db",
   },
 });
 

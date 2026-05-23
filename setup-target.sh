@@ -1,19 +1,39 @@
 #!/bin/bash
+
 set -e
 
-sudo mkdir -p /opt/mywebapp
-sudo chown -R $USER:$USER /opt/mywebapp
+if ! command -v docker &> /dev/null; then
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo \
+    "deb [arch=$(dpkg --print-architecture) \
+    signed-by=/etc/apt/keyrings/docker.asc] \
+    https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt-get update
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+  sudo usermod -aG docker "$USER"
+fi
 
-cat << 'EOF' > /opt/mywebapp/docker-compose.yml
+sudo mkdir -p /opt/mywebapp
+sudo chown -R "$USER:$USER" /opt/mywebapp
+
+cat > /opt/mywebapp/docker-compose.yml << 'EOF'
 services:
   db:
     image: mariadb:11
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: rootpassword
-      MARIADB_DATABASE: inventory_db
-      MARIADB_USER: app
-      MARIADB_PASSWORD: "12345678"
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
     networks:
@@ -25,8 +45,13 @@ services:
       retries: 5
 
   app:
-    image: ghcr.io/warterer/simple-inventory/mywebapp:latest
+    image: ghcr.io/${GITHUB_REPOSITORY}/mywebapp:latest
     restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +64,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./mywebapp.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/mywebapp/mywebapp.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - app
     networks:
@@ -53,7 +78,7 @@ networks:
     driver: bridge
 EOF
 
-cat << 'EOF' > /opt/mywebapp/mywebapp.conf
+cat > /opt/mywebapp/mywebapp.conf << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -77,27 +102,46 @@ server {
 }
 EOF
 
+if [ ! -f /opt/mywebapp/.env ]; then
+  cat > /opt/mywebapp/.env << EOF
+DB_ROOT_PASSWORD=changeme_root
+DB_NAME=inventory_db
+DB_USER=app
+DB_PASSWORD=changeme_app
+GITHUB_REPOSITORY=your_github_username/simple-inventory
+EOF
+  echo "Fill in /opt/mywebapp/.env with real values before starting!"
+fi
+
+if [ -n "$GHCR_TOKEN" ]; then
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$USER" --password-stdin
+else
+  echo "Set GHCR_TOKEN env var to pull images from GHCR"
+fi
+
 sudo tee /etc/systemd/system/mywebapp.service > /dev/null << 'EOF'
 [Unit]
-Description=MyWebApp Container
+Description=MyWebApp Docker Compose Service
 After=docker.service
 Requires=docker.service
 
 [Service]
-Restart=always
-ExecStartPre=-/usr/bin/docker stop mywebapp
-ExecStartPre=-/usr/bin/docker rm mywebapp
-ExecStart=/usr/bin/docker run --name mywebapp \
-  --network inventory_net \
-  -e DB_HOST=db ... \
-  ghcr.io/YOUR_REPO/mywebapp:latest
-ExecStop=/usr/bin/docker stop mywebapp
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/mywebapp
+EnvironmentFile=/opt/mywebapp/.env
+ExecStartPre=/usr/bin/docker compose pull
+ExecStart=/usr/bin/docker compose up
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=10s
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable mywebapp.service
 
-echo "Setup completed!"
+echo "Setup completed! Edit /opt/mywebapp/.env then run:"
+echo "   sudo systemctl start mywebapp.service"
