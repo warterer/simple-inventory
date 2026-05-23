@@ -121,7 +121,7 @@ jobs:
 
       - name: Verify deployment
         run: |
-          sleep 10
+          sleep 30
           curl -f -s http://localhost/items || \
             { echo 'Service unavailable!'; exit 1; }
 
