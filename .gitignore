@@ -17,3 +17,6 @@ deploy_key.pub
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+
+*.box
+*.vmdk
