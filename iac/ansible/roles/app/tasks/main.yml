@@ -1,0 +1,98 @@
+---
+- name: Install Node.js repository
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    creates: /etc/apt/sources.list.d/nodesource.list
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+- name: Create app user
+  ansible.builtin.user:
+    name: app
+    system: true
+    shell: /bin/false
+    create_home: false
+
+- name: Create operator user
+  ansible.builtin.user:
+    name: operator
+    shell: /bin/bash
+    create_home: true
+
+- name: Set operator password
+  ansible.builtin.user:
+    name: operator
+    password: "{{ '12345678' | password_hash('sha512') }}"
+    update_password: on_create
+
+- name: Create app directory
+  ansible.builtin.file:
+    path: /opt/mywebapp
+    state: directory
+    owner: app
+    group: app
+    mode: '0755'
+
+- name: Copy application files
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../../"
+    dest: /opt/mywebapp/
+    rsync_opts:
+      - "--exclude=iac/"
+      - "--exclude=node_modules/"
+      - "--exclude=.git/"
+      - "--exclude=coverage/"
+
+- name: Set app directory ownership
+  ansible.builtin.file:
+    path: /opt/mywebapp
+    owner: app
+    group: app
+    recurse: true
+
+- name: Install npm dependencies
+  ansible.builtin.command:
+    cmd: npm install --production
+    chdir: /opt/mywebapp
+  changed_when: false
+
+- name: Configure operator sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/operator
+    content: |
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl start mywebapp
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop mywebapp
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart mywebapp
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl status mywebapp
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
+    mode: '0440'
+
+- name: Create systemd service
+  ansible.builtin.template:
+    src: mywebapp.service.j2
+    dest: /etc/systemd/system/mywebapp.service
+    mode: '0644'
+  notify: Restart mywebapp
+
+- name: Run database migration
+  ansible.builtin.command:
+    cmd: >
+      node migrate.js
+      --db_host={{ hostvars['db_node']['ansible_host'] }}
+      --db_user=app
+      --db_pass=12345678
+      --db_name=inventory_db
+    chdir: /opt/mywebapp
+  become: true
+  changed_when: false
+
+- name: Start and enable mywebapp
+  ansible.builtin.systemd:
+    name: mywebapp
+    state: started
+    enabled: true
+    daemon_reload: true

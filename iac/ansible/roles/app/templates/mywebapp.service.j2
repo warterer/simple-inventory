@@ -1,0 +1,18 @@
+[Unit]
+Description=MyWebApp Simple Inventory Service
+After=network.target
+
+[Service]
+Type=simple
+User=app
+WorkingDirectory=/opt/mywebapp
+ExecStart=/usr/bin/node app.js \
+  --port=8080 \
+  --db_host={{ hostvars['db_node']['ansible_host'] }} \
+  --db_user=app \
+  --db_pass=12345678 \
+  --db_name=inventory_db
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

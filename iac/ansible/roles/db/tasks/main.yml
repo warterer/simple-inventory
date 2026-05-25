@@ -1,0 +1,36 @@
+---
+- name: Install MariaDB
+  ansible.builtin.apt:
+    name:
+      - mariadb-server
+      - python3-pymysql
+    state: present
+    update_cache: true
+
+- name: Start and enable MariaDB
+  ansible.builtin.systemd:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: Create inventory database
+  community.mysql.mysql_db:
+    name: inventory_db
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+- name: Create app user
+  community.mysql.mysql_user:
+    name: app
+    password: "12345678"
+    priv: "inventory_db.*:ALL"
+    host: "{{ hostvars['worker_node']['ansible_host'] }}"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+- name: Configure MariaDB to listen on host-only interface
+  ansible.builtin.template:
+    src: mariadb.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/99-custom.cnf
+    mode: '0644'
+  notify: Restart MariaDB
