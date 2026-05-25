@@ -71,50 +71,97 @@ lint + test → build-and-push → deploy
  
 Злиття в `main` заблоковано якщо не пройшли `lint` і `test`.
  
-## Документація по розгортанню
- 
-### Вимоги до віртуальної машини
- 
-- OS: Ubuntu 22.04 Server
-- CPU: 2 cores
-- RAM: 2 GB
-- Disk: 20 GB
-- Docker встановлений
-### Налаштування target node
- 
+## Terraform + Ansible
+
+### Архітектура
+
+```
+client → VM1 worker (nginx → app:8080) → VM2 db (MariaDB:3306)
+```
+
+Два вузли в межах Host-Only мережі VirtualBox (`192.168.56.0/24`):
+- **VM1 `worker-vm`** (`192.168.56.104`) — nginx reverse proxy + Node.js застосунок
+- **VM2 `db-vm`** (`192.168.56.103`) — MariaDB база даних
+
+### Вимоги
+
+- VirtualBox 7.2.8+
+- Terraform 1.x
+- Ansible
+- WSL2 (Ubuntu)
+- Vagrant box: `generic/ubuntu2204`
+
+### Етап 1: Terraform
+
 ```bash
-git clone https://github.com/warterer/simple-inventory
-cd simple-inventory
-chmod +x setup-target.sh
-./setup-target.sh
+cd iac/terraform
+terraform init
+terraform apply
 ```
- 
-Після виконання скрипта відредагувати `/opt/mywebapp/.env`:
- 
-```env
-DB_ROOT_PASSWORD=your_root_password
-DB_NAME=inventory_db
-DB_USER=app
-DB_PASSWORD=your_app_password
-GITHUB_REPOSITORY=warterer/simple-inventory
-```
- 
-Запустити сервіс:
- 
+
+> **Примітка:** Провайдер `terra-farm/virtualbox` на Windows не може автоматично зчитати IP через відсутність VirtualBox Guest Additions в образі. Після створення VM необхідно вручну активувати Host-Only інтерфейс на кожній VM:
+> ```bash
+> sudo dhclient eth1
+> ```
+> Потім знайти IP через VirtualBox DHCP leases і оновити `inventory.ini`.
+
+### Етап 2: Ansible
+
+Перед запуском скопіювати SSH ключ на обидві VM:
+
 ```bash
-sudo systemctl start mywebapp.service
+ssh-copy-id -i ~/.ssh/ansible_key.pub vagrant@<worker_ip>
+ssh-copy-id -i ~/.ssh/ansible_key.pub vagrant@<db_ip>
 ```
- 
-### Self-hosted Runner
- 
-Runner налаштований на окремій VM і підключений до репозиторію через GitHub Actions.
- 
-> **Важливо:** після завершення демонстрації VM з runner'ом зупиняється щоб унеможливити несанкціонований доступ.
- 
-### Управління доступом
- 
-| Користувач | Доступ | Права |
+
+Оновити IP в `iac/ansible/inventory.ini`:
+
+```ini
+[workers]
+worker_node ansible_host=192.168.56.104 ansible_user=vagrant
+
+[db]
+db_node ansible_host=192.168.56.103 ansible_user=vagrant
+```
+
+Запустити плейбук:
+
+```bash
+cd iac/ansible
+ansible-playbook playbook.yml
+```
+
+### Що робить Ansible
+
+**Роль `base`** (всі VM): створює юзерів `teacher`, `student`, файл `/home/student/gradebook`.
+
+**Роль `db`** (db-vm): встановлює MariaDB, створює БД `inventory_db` і юзера `app`, налаштовує прослуховування на Host-Only IP.
+
+**Роль `app`** (worker-vm): встановлює Node.js, копіює застосунок, створює юзерів `app` і `operator`, налаштовує systemd сервіс.
+
+**Роль `nginx`** (worker-vm): встановлює nginx, налаштовує reverse proxy, блокує `/health` ззовні.
+
+### Перевірка ідемпотентності
+
+Повторний запуск `ansible-playbook playbook.yml` повертає майже всі таски зі статусом `ok`.
+
+### Тестування системи
+
+```bash
+# Список предметів
+curl http://192.168.56.104/items
+
+# Health checks (локально на worker)
+ssh vagrant@192.168.56.104 "curl -s http://localhost/health/alive"
+ssh vagrant@192.168.56.104 "curl -s http://localhost/health/ready"
+```
+
+### Користувачі
+
+| Користувач | VM | Права |
 |---|---|---|
-| `student` | SSH/Console | повні права sudo |
-| `teacher` | SSH/Console | повні права sudo, пароль вимагає зміни |
-| `operator` | SSH/Console | обмежені права sudo (тільки mywebapp та nginx) |
+| `ansible` / `vagrant` | всі | sudo без пароля (для автоматизації) |
+| `teacher` | всі | sudo з паролем `12345678` |
+| `student` | всі | звичайний юзер |
+| `app` | worker | системний, запускає застосунок |
+| `operator` | worker | обмежений sudo (тільки mywebapp та nginx) |
